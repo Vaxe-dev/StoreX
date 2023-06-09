@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Image Manager</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.0/jquery.min.js"></script>
+    <style>
+      html, body {
+        height: 98%;
+        width: 99%;
+        padding: 5px;
+      }
+      details {
+        font-size: 40px;
+        display: flex;
+        overflow: hidden;
+        user-select: none;
+      }
+      details .file {
+        max-width: 70%;
+        box-shadow: 0px 0px 30px 0px;
+        margin: 10px;
+        max-height: 500px;
+      }
+      details div {
+        max-width: 50%;
+        box-shadow: 0px 0px 20px 0px;
+        margin: 10px;
+        border-radius: 10px;
+        padding: 0px 0px 0px 10px;
+      }
+      .folder {
+        margin-left: 10px;
+        font-size: 30px;
+      }
+      /* Board Menu Styles */
+#board-menu {
+  position: fixed;
+  z-index: 10000;
+  width: 15%;
+  background: #1b1a1a;
+  border-radius: 10px;
+  transform: scale(0);
+  transform-origin: top left;
+  box-shadow: 0px 0px 10px 0px;
+}
+#board-menu.visible {
+  transform: scale(1);
+  transition: transform 200ms ease-in-out;
+}
+
+#board-menu .item {
+  padding: 8px 10px;
+  font-size: 20px;
+  color: #eee;
+  cursor: pointer;
+  border-radius: inherit;
+  position: relative;
+  -webkit-transition-duration: 0.4s;
+  transition-duration: 0.4s;
+  text-decoration: none;
+  overflow: hidden;
+}
+[disabled] {
+  opacity: 0.5;
+  background: #1b1a1a!important;
+}
+#board-menu .item:hover {
+  background: #343434;
+}
+
+#board-menu .item:after{
+  content: "";
+  background: #737373;
+  display: block;
+  position: absolute;
+  padding-top: 300%;
+  padding-left: 350%;
+  margin-left: -20px!important;
+  margin-top: -120%;
+  opacity: 0;
+  transition: all 0.8s;
+}
+#board-menu .item:active:after{
+  padding: 0;
+  margin: 0;
+  opacity: 1;
+  transition: 0s;
+}/* Global Styles */
+      #editor {
+        scale: 0;
+        width: 50%;
+        height: 50%;
+        position: fixed;
+        top: 30%;
+        left: 30%;
+        box-shadow: 0px 0px 20px 0px;
+        border-radius: 10px;
+        transition: scale 1s;
+        background: white;
+      }
+      #editor-name {
+        left: 50%;
+        position: absolute;
+      }
+      #editor-save {
+        float: right;
+        margin: 5px;
+      }
+      #editor textarea {
+        width: 98%;
+        height: 88%;
+        border-radius: 10px;
+        padding: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>List of files stored on the server</h1>
+    <hr>
+    <input id="search" placeholder="Search File...">
+    <div id="editor">
+      <b id="editor-name"></b>
+      <button id="editor-save">Save</button>
+      <textarea id="editor-value"></textarea>
+    </div>
+    <div id="board-menu">
+      <div id="board-name" class="item" disabled></div>
+      <hr style="margin: 0px;scale: 0.5;">
+      <div id="board-visit" class="item">Visit</div>
+      <div id="board-rename" class="item">Rename</div>
+      <div id="board-copy" class="item">Copy Link</div>
+      <div id="board-delete" class="item" style="color:red;">Delete</div>
+    </div>
+    <script>
+      const normalizePozition = (mouseX, mouseY) => {
+  const scope = document.querySelector("body");
+  const contextMenu = document.getElementById("board-menu");
+        let {
+          left: scopeOffsetX,
+          top: scopeOffsetY,
+        } = scope.getBoundingClientRect();
+        scopeOffsetX = scopeOffsetX < 0 ? 0 : scopeOffsetX;
+        scopeOffsetY = scopeOffsetY < 0 ? 0 : scopeOffsetY;
+       
+        const scopeX = mouseX - scopeOffsetX;
+        const scopeY = mouseY - scopeOffsetY;
+        // ? check if the element will go out of bounds
+        const outOfBoundsOnX =
+          scopeX + contextMenu.clientWidth > scope.clientWidth;
+        const outOfBoundsOnY =
+          scopeY + contextMenu.clientHeight > scope.clientHeight;
+        let normalizedX = mouseX;
+        let normalizedY = mouseY;
+        // ? normalize on X
+        if (outOfBoundsOnX) {
+          normalizedX =
+            scopeOffsetX + scope.clientWidth - contextMenu.clientWidth;
+        }
+        // ? normalize on Y
+        if (outOfBoundsOnY) {
+          normalizedY =
+            scopeOffsetY + scope.clientHeight - contextMenu.clientHeight;
+        }
+        return { normalizedX, normalizedY };
+      };
+      jQuery(document).ready(function($) {
+        function getAll() {
+  let key = localStorage.getItem("key");
+  if (!key) {
+    key = prompt("Admin Key:");
+  }
+  fetch(window.location.href, { method: "get", headers: { "type": "getAllFiles", "key": key } })
+    .then(res => {
+      if (res.status == 403) {
+        localStorage.setItem("key", "");
+        return getAll();
+      } else if (res.status == 200) {
+        localStorage.setItem("key", key);
+        return res.json();
+      }
+    })
+    .then(out => {
+      const data = out.folders
+      const types = out.types
+      console.log(out)
+      let fold;
+      for (var type of Object.keys(types)) {
+        const typ = document.createElement("details")
+        typ.id = type
+        typ.innerHTML = `<summary>${type.toUpperCase()}</summary>`
+        document.body.appendChild(typ)
+        for (var folder of types[type]) {
+          const fo = document.createElement("details")
+          fo.id = folder
+          fo.classList.add("folder")
+          fo.innerHTML = `<summary>${folder.toUpperCase()}</summary>`
+          document.getElementById(type).appendChild(fo)
+          console.log(data[types[type]])
+          for (var item of data[folder]) {
+            if (type === "image") {
+              fold = document.createElement("img");
+              fold.src = window.location.href.replace(window.location.pathname, "/" + item)
+            } else if (type === "video" || type === "audio") {
+              fold = document.createElement("video")
+              fold.innerHTML = `<source src="${window.location.href.replace(window.location.pathname, "/" + item)}" type="${type}/${item.split(".").pop()}">`
+              fold.controls = true
+            } else if (type === "text") {
+              fold = document.createElement("div");
+              fold.innerHTML = item
+            } else {
+              fold = document.createElement("div");
+              fold.innerHTML = item
+            }
+            fold.title = item
+            fold.id = type + "-" + item
+            fold.classList.add("file")
+            document.getElementById(folder).appendChild(fold);
+          }
+        }
+      }
+      // for (let type of Object.keys(data)) {
+      //   const cat = document.createElement("details")
+      //   cat.id = type
+      //   cat.innerHTML = `<summary>${type.toUpperCase()} <i id="${type}-count">(${data[type].length})</i></summary>`
+      //   document.body.appendChild(cat)
+      //   if (["png", "jpg", "jpeg", "gif", "svg", "ico", "webp", "tiff"].includes(type)) {
+      //     for (var img of data[type]) {
+      //       var image = document.createElement("img");
+      //       image.src = window.location.href.replace(window.location.pathname, "/" + img)
+      //       image.title = img
+      //       image.id = "image-" + img
+      //       image.classList.add("file")
+      //       document.getElementById(type).appendChild(image);
+      //     }
+      //   } else if (type === "txt") {
+      //     for (var txt of data[type]) {
+      //       var text = document.createElement("div");
+      //       text.innerHTML = txt
+      //       text.title = txt
+      //       text.id = "text-" + txt
+      //       text.classList.add("file")
+      //       document.getElementById(type).appendChild(text);
+      //     }
+      //   } else if (["mp4"].includes(type)) {
+      //     for (var vid of data[type]) {
+      //       var video = document.createElement("video")
+      //       video.innerHTML = `<source src="${window.location.href.replace(window.location.pathname, "/" + vid)}" type="video/${vid.split(".").pop()}">`
+      //       video.title = vid
+      //       video.controls = true
+      //       video.id = "video-" + vid
+      //       video.classList.add("file")
+      //       document.getElementById(type).appendChild(video);
+      //     }
+      //   } else if (["mp3"].includes(type)) {
+      //     for (var au of data[type]) {
+      //       var audio = document.createElement("audio")
+      //       audio.innerHTML = `<source src="${window.location.href.replace(window.location.pathname, "/" + au)}" type="audio/${au.split(".").pop()}">`
+      //       audio.title = au
+      //       audio.controls = true
+      //       audio.id = "audio-" + au
+      //       audio.classList.add("file")
+      //       document.getElementById(type).appendChild(audio);
+      //     }
+      //   }
+      // }
+    })
+    .catch(error => {
+      console.error(error);
+    });
+}
+getAll();
+      function board(event) {
+        const el = $(event.target).attr("id");
+        const file_name = el.replace(el.split("-")[0] + "-","")
+        let type;
+        if (el.startsWith("image-")) {
+          type = "image"
+        } else if (el.startsWith("text-")) {
+          type = "text"
+        } else {
+          return;
+        }
+        event.preventDefault();
+          event.stopPropagation();
+          const contextMenu = document.getElementById("board-menu");
+          const { clientX: mouseX, clientY: mouseY } = event;
+          const { normalizedX, normalizedY } = normalizePozition(mouseX, mouseY);
+          contextMenu.classList.remove("visible");
+          contextMenu.style.top = `${normalizedY}px`;
+          contextMenu.style.left = `${normalizedX}px`;
+          contextMenu.classList.add("visible");
+          $("#board-name").html(file_name)
+          $("#board-visit").off("click")
+          $("#board-visit").click(function() {
+            document.getElementById("board-menu").classList.remove("visible");
+            if (type == "image") {
+              window.open(window.location.href.replace(window.location.pathname, "/" + file_name))
+            } else if (type == "text") {
+              fetch(window.location.href.replace(window.location.pathname, "/" + file_name)).then(res => res.text()).then(data => {
+                document.getElementById("editor-value").innerHTML = data
+              })
+              setTimeout(function() {
+                document.getElementById("editor").style.scale = 1;
+                document.getElementById("editor-name").innerHTML = file_name
+              },500)
+            }
+          })
+          $("#board-rename").off("click")
+          $("#board-rename").click(function() {
+            const name = prompt("Rename " + el + " to:")
+            fetch(window.location.href, { method: "get", headers: { "type": "renameFile", "key": localStorage.getItem("key"),"file":file_name, "rename":name } })
+            .then(res => {
+              if (res.status == 403) {
+                localStorage.setItem("key", "");
+                return location.refresh();
+              } else if (res.status == 200) {
+                const reid = document.getElementById(el);
+                reid.id = type + "-" + name
+                document.getElementById("board-menu").classList.remove("visible");
+                alert("Rename " + file_name + " to: " + name)
+              }
+            })
+          })
+        $("#board-copy").off("click")
+          $("#board-copy").click(function() {
+            navigator.clipboard.writeText(window.location.href.replace(window.location.pathname, "/" + file_name))
+          })
+        $("#board-delete").off("click")
+          $("#board-delete").click(function() {
+            const del = confirm("Delete " + file_name + "?")
+            if (!del) return;
+            fetch(window.location.href, { method: "get", headers: { "type": "deleteFile", "key": localStorage.getItem("key"),"file":file_name} })
+            .then(res => {
+              if (res.status == 403) {
+                localStorage.setItem("key", "");
+                return location.refresh();
+              } else if (res.status == 200) {
+                const reid = document.getElementById(el);
+                reid.remove()
+                document.getElementById("board-menu").classList.remove("visible");
+              }
+            })
+          })
+      }
+        $("body").on("contextmenu", function(event) {
+          board(event)
+        })
+        let pressTimer;
+        $("body").on("mousedown", function(event) {
+          pressTimer = setTimeout(function() {
+            board(event)
+          }, 1000);
+        });
+        $("body").on("mouseup", function() {
+          clearTimeout(pressTimer);
+        });
+      $("body").on("click", (e) => {
+    const contextMenu = document.getElementById("board-menu");
+        const editor = document.getElementById("editor");
+    if (e.target.offsetParent != contextMenu) {
+      contextMenu.classList.remove("visible");
+    }
+        if (e.target.offsetParent != editor && editor.style.scale == 1) {
+          editor.style.scale = 0
+        }
+  });
+        $("#editor-save").click(function() {
+          fetch(window.location.href, {"method":"post","headers":{"type":"editFile","key":localStorage.getItem("key"),"file":document.getElementById("editor-name").innerHTML,"body":document.getElementById("editor-value").value.replaceAll("\n","\\n")}})
+        })
+        $(window).on('scroll', function() {
+          document.getElementById("board-menu").classList.remove("visible");
+        });
+        $("#search").on("input", function() {
+          const name = $(this).val()
+          $(".file").show().filter(function() {
+    return $(this).attr("title").toLowerCase().trim().indexOf(name) == -1;
+  }).hide();
+        })
+      })
+    </script>
+  </body>
+</html>
